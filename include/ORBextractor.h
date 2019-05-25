@@ -93,18 +93,18 @@ protected:
 
     void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
     std::vector<cv::Point> pattern;
-
-    int nfeatures;
-    double scaleFactor;
-    int nlevels;
-    int iniThFAST;
-    int minThFAST;
+ 
+    int nfeatures;  //总共关键点的数量
+    double scaleFactor;  //金字塔图像缩放因子
+    int nlevels;  //金字塔图像层数，如果为1则不存在缩放
+    int iniThFAST;  //FAST检测角点时的初始化阈值
+    int minThFAST;  //FAST检测角点的最低阈值，在使用iniThFAST检测不到角点时使用该值
 
     std::vector<int> mnFeaturesPerLevel;
 
     std::vector<int> umax;
 
-    std::vector<float> mvScaleFactor;
+    std::vector<float> mvScaleFactor;  
     std::vector<float> mvInvScaleFactor;    
     std::vector<float> mvLevelSigma2;
     std::vector<float> mvInvLevelSigma2;

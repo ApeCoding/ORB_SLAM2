@@ -412,46 +412,48 @@ ORBextractor::ORBextractor(int _nfeatures, float _scaleFactor, int _nlevels,
     nfeatures(_nfeatures), scaleFactor(_scaleFactor), nlevels(_nlevels),
     iniThFAST(_iniThFAST), minThFAST(_minThFAST)
 {
-    mvScaleFactor.resize(nlevels);
-    mvLevelSigma2.resize(nlevels);
+    mvScaleFactor.resize(nlevels);  //尺度因子数组(大小是图像金字塔层数)
+    mvLevelSigma2.resize(nlevels);  //每层的高斯模糊的sigma
     mvScaleFactor[0]=1.0f;
     mvLevelSigma2[0]=1.0f;
     for(int i=1; i<nlevels; i++)
     {
-        mvScaleFactor[i]=mvScaleFactor[i-1]*scaleFactor;
-        mvLevelSigma2[i]=mvScaleFactor[i]*mvScaleFactor[i];
+        mvScaleFactor[i]=mvScaleFactor[i-1]*scaleFactor;  //每层的尺度因子
+        mvLevelSigma2[i]=mvScaleFactor[i]*mvScaleFactor[i]; //每层的sigma
     }
 
     mvInvScaleFactor.resize(nlevels);
     mvInvLevelSigma2.resize(nlevels);
     for(int i=0; i<nlevels; i++)
     {
-        mvInvScaleFactor[i]=1.0f/mvScaleFactor[i];
-        mvInvLevelSigma2[i]=1.0f/mvLevelSigma2[i];
+        mvInvScaleFactor[i]=1.0f/mvScaleFactor[i]; // 反尺度因子(真正的缩小的比率)
+        mvInvLevelSigma2[i]=1.0f/mvLevelSigma2[i]; // 
     }
 
-    mvImagePyramid.resize(nlevels);
+    mvImagePyramid.resize(nlevels);  //图像金字塔(层数)
 
-    mnFeaturesPerLevel.resize(nlevels);
+    mnFeaturesPerLevel.resize(nlevels); //每层要找的特征点数
     float factor = 1.0f / scaleFactor;
-    float nDesiredFeaturesPerScale = nfeatures*(1 - factor)/(1 - (float)pow((double)factor, (double)nlevels));
+    float nDesiredFeaturesPerScale = nfeatures*(1 - factor)/(1 - (float)pow((double)factor, (double)nlevels)); // 第0层想要获取到的特征点数量
+    // 数量*(1-1/尺度因子)/(1-pow(1/尺度因子,层数))
 
-    int sumFeatures = 0;
+    int sumFeatures = 0; //总点数
     for( int level = 0; level < nlevels-1; level++ )
     {
-        mnFeaturesPerLevel[level] = cvRound(nDesiredFeaturesPerScale);
-        sumFeatures += mnFeaturesPerLevel[level];
-        nDesiredFeaturesPerScale *= factor;
+        mnFeaturesPerLevel[level] = cvRound(nDesiredFeaturesPerScale);  //cvRound() 返回最近的整数值，四舍五入 这一层获取要获取的特征点数量
+        sumFeatures += mnFeaturesPerLevel[level]; // 
+        nDesiredFeaturesPerScale *= factor;  //这一层获取要获取的特征点数量
     }
-    mnFeaturesPerLevel[nlevels-1] = std::max(nfeatures - sumFeatures, 0);
+    mnFeaturesPerLevel[nlevels-1] = std::max(nfeatures - sumFeatures, 0); //最后一层的数量
 
-    const int npoints = 512;
+    // 为特征点提取做准备，后面再讲
+    const int npoints = 512;   
     const Point* pattern0 = (const Point*)bit_pattern_31_;
     std::copy(pattern0, pattern0 + npoints, std::back_inserter(pattern));
 
     //This is for orientation
     // pre-compute the end of a row in a circular patch
-    umax.resize(HALF_PATCH_SIZE + 1);
+    umax.resize(HALF_PATCH_SIZE + 1); //圆形区域(特征点描述子的周围区域大小，用来计算方向大小的区域)
 
     int v, v0, vmax = cvFloor(HALF_PATCH_SIZE * sqrt(2.f) / 2 + 1);
     int vmin = cvCeil(HALF_PATCH_SIZE * sqrt(2.f) / 2);
@@ -804,11 +806,11 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
                     continue;
                 if(maxX>maxBorderX)
                     maxX = maxBorderX;
-
+                //每个格子中检测FAST特征点
                 vector<cv::KeyPoint> vKeysCell;
                 FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                      vKeysCell,iniThFAST,true);
-
+                //如果没有检测到特征点，则降低标准再检测一遍
                 if(vKeysCell.empty())
                 {
                     FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
@@ -831,6 +833,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
         vector<KeyPoint> & keypoints = allKeypoints[level];
         keypoints.reserve(nfeatures);
 
+        //八叉树划分
         keypoints = DistributeOctTree(vToDistributeKeys, minBorderX, maxBorderX,
                                       minBorderY, maxBorderY,mnFeaturesPerLevel[level], level);
 
@@ -1052,6 +1055,7 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
     // Pre-compute the scale pyramid
     ComputePyramid(image);
 
+    //计算金字塔每一层的关键点和方向
     vector < vector<KeyPoint> > allKeypoints;
     ComputeKeyPointsOctTree(allKeypoints);
     //ComputeKeyPointsOld(allKeypoints);

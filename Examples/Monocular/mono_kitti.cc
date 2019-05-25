@@ -42,18 +42,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // 1. 图像和时间戳读入，对照片图像数量计数
     // Retrieve paths to images
     vector<string> vstrImageFilenames;
     vector<double> vTimestamps;
-    LoadImages(string(argv[3]), vstrImageFilenames, vTimestamps);
+    LoadImages(string(argv[3]), vstrImageFilenames, vTimestamps);  //根据输入图像序列地址，读取图像名称和时间戳
 
-    int nImages = vstrImageFilenames.size();
+    int nImages = vstrImageFilenames.size(); //获取图像个数
 
+    // 2. 创建SLAM对象，初始化
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true);
+    ORB_SLAM2::System SLAM(argv[1],argv[2],ORB_SLAM2::System::MONOCULAR,true); //初始化一个ORB_SLAM2 System的对象
 
     // Vector for tracking time statistics
-    vector<float> vTimesTrack;
+    vector<float> vTimesTrack;   //用来记录处理每张图片花费的时间
     vTimesTrack.resize(nImages);
 
     cout << endl << "-------" << endl;
@@ -66,7 +68,7 @@ int main(int argc, char **argv)
     {
         // Read image from file
         im = cv::imread(vstrImageFilenames[ni],CV_LOAD_IMAGE_UNCHANGED);
-        double tframe = vTimestamps[ni];
+        double tframe = vTimestamps[ni]; //当前帧的时间戳
 
         if(im.empty())
         {
@@ -108,7 +110,7 @@ int main(int argc, char **argv)
     SLAM.Shutdown();
 
     // Tracking time statistics
-    sort(vTimesTrack.begin(),vTimesTrack.end());
+    sort(vTimesTrack.begin(),vTimesTrack.end()); //排序是为了显示出中位数
     float totaltime = 0;
     for(int ni=0; ni<nImages; ni++)
     {
@@ -127,7 +129,7 @@ int main(int argc, char **argv)
 void LoadImages(const string &strPathToSequence, vector<string> &vstrImageFilenames, vector<double> &vTimestamps)
 {
     ifstream fTimes;
-    string strPathTimeFile = strPathToSequence + "/times.txt";
+    string strPathTimeFile = strPathToSequence + "/times.txt"; //时间戳的文件
     fTimes.open(strPathTimeFile.c_str());
     while(!fTimes.eof())
     {
@@ -135,23 +137,23 @@ void LoadImages(const string &strPathToSequence, vector<string> &vstrImageFilena
         getline(fTimes,s);
         if(!s.empty())
         {
-            stringstream ss;
+            stringstream ss; 
             ss << s;
             double t;
-            ss >> t;
+            ss >> t;  //转化成double类型的数据
             vTimestamps.push_back(t);
         }
     }
 
-    string strPrefixLeft = strPathToSequence + "/image_0/";
+    string strPrefixLeft = strPathToSequence + "/image_0/"; //图像文件路径
 
     const int nTimes = vTimestamps.size();
-    vstrImageFilenames.resize(nTimes);
+    vstrImageFilenames.resize(nTimes); //图片数量和时间戳的数量一样多
 
     for(int i=0; i<nTimes; i++)
     {
         stringstream ss;
-        ss << setfill('0') << setw(6) << i;
+        ss << setfill('0') << setw(6) << i;  //保存形式   六位，不够的补零  如： "000023.png"
         vstrImageFilenames[i] = strPrefixLeft + ss.str() + ".png";
     }
 }

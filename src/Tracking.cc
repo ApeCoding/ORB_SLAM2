@@ -43,26 +43,28 @@ using namespace std;
 namespace ORB_SLAM2
 {
 
+//使用Tracking(当前对象this指针, mpVocabulary, mpFrameDrawer, mpMapDrawer, mpMap, mpKeyFrameDatabase, strSettingsFile, mSensor);
+//这个是类ORBextractor的带参构造函数，并且使用初始化列表对该类中的这5个变量赋值
 Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer, MapDrawer *pMapDrawer, Map *pMap, KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor):
     mState(NO_IMAGES_YET), mSensor(sensor), mbOnlyTracking(false), mbVO(false), mpORBVocabulary(pVoc),
     mpKeyFrameDB(pKFDB), mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys), mpViewer(NULL),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpMap(pMap), mnLastRelocFrameId(0)
 {
     // Load camera parameters from settings file
-
+    // 相机参数
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
     float fx = fSettings["Camera.fx"];
     float fy = fSettings["Camera.fy"];
     float cx = fSettings["Camera.cx"];
     float cy = fSettings["Camera.cy"];
-
+    //相机内参矩阵K
     cv::Mat K = cv::Mat::eye(3,3,CV_32F);
     K.at<float>(0,0) = fx;
     K.at<float>(1,1) = fy;
     K.at<float>(0,2) = cx;
     K.at<float>(1,2) = cy;
     K.copyTo(mK);
-
+    //畸变参数  k是径向畸变，p是切向畸变
     cv::Mat DistCoef(4,1,CV_32F);
     DistCoef.at<float>(0) = fSettings["Camera.k1"];
     DistCoef.at<float>(1) = fSettings["Camera.k2"];
@@ -75,7 +77,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
         DistCoef.at<float>(4) = k3;
     }
     DistCoef.copyTo(mDistCoef);
-
+    //帧率？？？
     mbf = fSettings["Camera.bf"];
 
     float fps = fSettings["Camera.fps"];
@@ -83,6 +85,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
         fps=30;
 
     // Max/Min Frames to insert keyframes and to check relocalisation
+    // 应该是多少帧之内必须有一个关键帧??
     mMinFrames = 0;
     mMaxFrames = fps;
 
@@ -99,7 +102,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     cout << "- p2: " << DistCoef.at<float>(3) << endl;
     cout << "- fps: " << fps << endl;
 
-
+    // RGB还是BGR的存储方式，如果是灰度图的话，忽略这一条
     int nRGB = fSettings["Camera.RGB"];
     mbRGB = nRGB;
 
@@ -110,12 +113,13 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
 
     // Load ORB parameters
 
-    int nFeatures = fSettings["ORBextractor.nFeatures"];
-    float fScaleFactor = fSettings["ORBextractor.scaleFactor"];
-    int nLevels = fSettings["ORBextractor.nLevels"];
-    int fIniThFAST = fSettings["ORBextractor.iniThFAST"];
-    int fMinThFAST = fSettings["ORBextractor.minThFAST"];
+    int nFeatures = fSettings["ORBextractor.nFeatures"]; //总共需要找到的关键点的数量
+    float fScaleFactor = fSettings["ORBextractor.scaleFactor"];  //金字塔每层之间的缩放因子
+    int nLevels = fSettings["ORBextractor.nLevels"];  //金字塔图像层数，如果为1则不存在缩放
+    int fIniThFAST = fSettings["ORBextractor.iniThFAST"]; //FAST检测角点时的初始化阈值
+    int fMinThFAST = fSettings["ORBextractor.minThFAST"]; //FAST检测角点的最低阈值，在使用iniThFAST检测不到角点时使用该值
 
+    //构建了特征提取器
     mpORBextractorLeft = new ORBextractor(nFeatures,fScaleFactor,nLevels,fIniThFAST,fMinThFAST);
 
     if(sensor==System::STEREO)
@@ -239,6 +243,7 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
 {
     mImGray = im;
 
+    //将图片转换为灰度图
     if(mImGray.channels()==3)
     {
         if(mbRGB)
@@ -254,6 +259,7 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
             cvtColor(mImGray,mImGray,CV_BGRA2GRAY);
     }
 
+    // 判断跟踪线程的状态
     if(mState==NOT_INITIALIZED || mState==NO_IMAGES_YET)
         mCurrentFrame = Frame(mImGray,timestamp,mpIniORBextractor,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth);
     else
@@ -264,6 +270,18 @@ cv::Mat Tracking::GrabImageMonocular(const cv::Mat &im, const double &timestamp)
     return mCurrentFrame.mTcw.clone();
 }
 
+/*
+    Tracking的四种状态（这里的线程状态都是指当前帧处理之前的状态）
+    NO_IMAGES_YET   :  表示当前没有图片;
+                       若是这个状态则当新的一帧来临时，将线程状态改变为NOT_INITIALIZED。
+    NOT_INITIALIZED :  表示当前没有初始化追踪线程;
+                       若是这个状态则针对单目相机和双目相机/RGBD相机进行不同的初始化。
+    OK              :  证明当前追踪线程完好;
+                       若是这个状态则首先CheckReplacedInLastFrame()检测上一帧中的所有地图点中有没有可以代替该地图点的其他地图点，
+                       如果有则将两地图点融合为一个地图点（用替代点替代当前帧中的地图点），然后用两种方式求解相机位姿。
+    LOST            :  证明当前追踪线程丢失
+                       重定位。
+*/
 void Tracking::Track()
 {
     if(mState==NO_IMAGES_YET)
@@ -301,7 +319,8 @@ void Tracking::Track()
 
             if(mState==OK)
             {
-                // Local Mapping might have changed some MapPoints tracked in last frame
+                // Local Mapping might have changed some MapPoints tracked in last frame 
+                // ？？？
                 CheckReplacedInLastFrame();
 
                 if(mVelocity.empty() || mCurrentFrame.mnId<mnLastRelocFrameId+2)
@@ -330,11 +349,15 @@ void Tracking::Track()
             }
             else
             {
-                if(!mbVO)
+                // mbVO是mbOnlyTracking为true时的才有的一个变量
+                // mbVO为false表示此帧匹配了很多的MapPoints，跟踪很正常，
+                // mbVO为true表明此帧匹配了很少的MapPoints，少于10个，要跪的节奏
+
+                if(!mbVO) //mbVO为false则表明此帧匹配了很多的3D map点，非常好
                 {
                     // In last frame we tracked enough MapPoints in the map
 
-                    if(!mVelocity.empty())
+                    if(!mVelocity.empty())  //上一帧有速度，跟踪模型
                     {
                         bOK = TrackWithMotionModel();
                     }
@@ -358,13 +381,14 @@ void Tracking::Track()
                     cv::Mat TcwMM;
                     if(!mVelocity.empty())
                     {
-                        bOKMM = TrackWithMotionModel();
+                        bOKMM = TrackWithMotionModel();  //跟踪
                         vpMPsMM = mCurrentFrame.mvpMapPoints;
                         vbOutMM = mCurrentFrame.mvbOutlier;
                         TcwMM = mCurrentFrame.mTcw.clone();
                     }
-                    bOKReloc = Relocalization();
+                    bOKReloc = Relocalization();  //重定位
 
+                    // 重定位没有成功，但是如果跟踪成功
                     if(bOKMM && !bOKReloc)
                     {
                         mCurrentFrame.SetPose(TcwMM);
@@ -382,7 +406,7 @@ void Tracking::Track()
                             }
                         }
                     }
-                    else if(bOKReloc)
+                    else if(bOKReloc)   // 只要重定位成功整个跟踪过程正常进行（定位与跟踪，更相信重定位）
                     {
                         mbVO = false;
                     }
@@ -405,6 +429,7 @@ void Tracking::Track()
             // mbVO true means that there are few matches to MapPoints in the map. We cannot retrieve
             // a local map and therefore we do not perform TrackLocalMap(). Once the system relocalizes
             // the camera we will use the local map again.
+            // 局部地图不工作，特征点足够且重定位成功
             if(bOK && !mbVO)
                 bOK = TrackLocalMap();
         }
@@ -418,14 +443,17 @@ void Tracking::Track()
         mpFrameDrawer->Update(this);
 
         // If tracking were good, check if we insert a keyframe
+        // 跟踪成功，检查是否插入了关键帧
         if(bOK)
         {
             // Update motion model
+             // 先更新运动模型
             if(!mLastFrame.mTcw.empty())
             {
                 cv::Mat LastTwc = cv::Mat::eye(4,4,CV_32F);
                 mLastFrame.GetRotationInverse().copyTo(LastTwc.rowRange(0,3).colRange(0,3));
                 mLastFrame.GetCameraCenter().copyTo(LastTwc.rowRange(0,3).col(3));
+                // 更新恒速运动模型TrackWithMotionModel中的mVelocity
                 mVelocity = mCurrentFrame.mTcw*LastTwc;
             }
             else
@@ -469,6 +497,8 @@ void Tracking::Track()
         }
 
         // Reset if the camera get lost soon after initialization
+        // 跟踪失败，并且relocation也没有搞定，只能重新Reset
+
         if(mState==LOST)
         {
             if(mpMap->KeyFramesInMap()<=5)
@@ -486,9 +516,11 @@ void Tracking::Track()
     }
 
     // Store frame pose information to retrieve the complete camera trajectory afterwards.
+    // 记录位姿信息，用于轨迹复现
     if(!mCurrentFrame.mTcw.empty())
     {
-        cv::Mat Tcr = mCurrentFrame.mTcw*mCurrentFrame.mpReferenceKF->GetPoseInverse();
+        // 计算相对姿态T_currentFrame_referenceKeyFrame
+        cv::Mat Tcr = mCurrentFrame.mTcw*mCurrentFrame.mpReferenceKF->GetPoseInverse();  //参考帧到当前帧的转化矩阵
         mlRelativeFramePoses.push_back(Tcr);
         mlpReferences.push_back(mpReferenceKF);
         mlFrameTimes.push_back(mCurrentFrame.mTimeStamp);
@@ -497,6 +529,7 @@ void Tracking::Track()
     else
     {
         // This can happen if tracking is lost
+        // 如果跟踪失败，则相对位姿使用上一次值
         mlRelativeFramePoses.push_back(mlRelativeFramePoses.back());
         mlpReferences.push_back(mlpReferences.back());
         mlFrameTimes.push_back(mlFrameTimes.back());

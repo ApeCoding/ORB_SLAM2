@@ -195,6 +195,7 @@ Frame::Frame(const cv::Mat &imGray, const double &timeStamp, ORBextractor* extra
     if(mvKeys.empty())
         return;
 
+    // 调用OpenCV的矫正函数矫正orb提取的特征点
     UndistortKeyPoints();
 
     // Set no stereo information
@@ -401,6 +402,10 @@ void Frame::ComputeBoW()
     }
 }
 
+/*
+    mDistCoef : 存储矫正镜头畸变参数
+    mk : 相机内参
+*/
 void Frame::UndistortKeyPoints()
 {
     if(mDistCoef.at<float>(0)==0.0)
